@@ -15,13 +15,13 @@ class Upstream(object):
     """
 
     def __init__(self, dest, address_type, connection_callback,
-                 error_callback, streaming_callbak, close_callback):
+                 error_callback, streaming_callback, close_callback):
         assert address_type in [socket.AF_INET, socket.AF_INET6]
         self.dest = dest
         self._address_type = address_type
         self.connection_callback = connection_callback
         self.error_callback = error_callback
-        self.streaming_callback = streaming_callbak
+        self.streaming_callback = streaming_callback
         self.close_callback = close_callback
         logger.debug("create a upstream on (%s, %s)" % dest)
         self.initialize()
@@ -35,7 +35,7 @@ class Upstream(object):
         self.do_close()
 
     def initialize(self):
-        """ 
+        """
         The more setting and attr bind before request.
         """
         pass
