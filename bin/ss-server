@@ -16,5 +16,5 @@ if __name__ == '__main__':
     config = Config.current(config_path)
     log_config('FukeiServer', config.debug)
     crypto.setup_table(config.password, config.method)
-    server = FukeiSocksServer(side='server', config=config)
+    server = FukeiSocksServer(side='remote', config=config)
     server.server_forever()

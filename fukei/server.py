@@ -21,7 +21,7 @@ class Socks5Server(TCPServer):
 
     def _handle_connection(self, connection, address):
         try:
-            stream = self.stream_cls(connection, io_loop=self.io_loop, 
+            stream = self.stream_cls(connection, io_loop=self.io_loop,
             	max_buffer_size=self.max_buffer_size)
             self.handle_stream(stream, address)
         except Exception:
@@ -31,19 +31,19 @@ class Socks5Server(TCPServer):
 class FukeiSocksServer(object):
 
     def __init__(self, side, config):
-        self.side = 'remote' if side == 'server' else side
+        self.side = side
         if self.side == 'remote':
             self.address = config.server
             self.port = config.server_port
         else:
-            self.address = '127.0.0.1'
+            self.address = '0.0.0.0'
             self.port = config.local_port
 
     def create_server(self, addr, port):
         connection_cls = get_connection(self.side)()
         streams = get_streams(self.side)()
         server = Socks5Server(connection_cls, streams)
-        
+
         server.bind(port, address=addr, backlog=1024)
         return server
 
