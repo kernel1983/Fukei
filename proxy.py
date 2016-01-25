@@ -49,46 +49,10 @@ logger = logging.getLogger('tornado_proxy')
 __all__ = ['ProxyHandler', 'run_proxy']
 
 
-class LocalConnection(object):
-    COMMAND_MAP = {
-        0x01:   'CONNECT',
-        0x02:   'BIND',
-        0x03:   'UDP ASSOCIATION'
-    }
-    ACCEPTED_COMMANDS = [0x01, ]
-    ADDRESS_TYPE_MAP = {
-        0x01:   'IPv4 Address',
-        0x03:   'Domain name',
-        0x04:   'IPv6 Address'
-    }
-    ADDRESS_TYPE_LENGTH = {
-        0x01:   4,
-        0x04:   16
-    }
-    ACCEPTED_ADDRESS_TYPES = [0x01, 0x03, 0x04]
-    REPLY_CODES = {
-        0x00:   'succeeded',
-        0x01:   'general SOCKS server failure',
-        0x02:   'connection not allowed by ruleset',
-        0x03:   'Network unreachable',
-        0x04:   'Host unreachable',
-        0x05:   'Connection refused',
-        0x06:   'TTL expired',
-        0x07:   'Command not supported',
-        0x08:   'Address type not supported',
-        0x09:   "to X'FF' unassigned"
-    }
-    ERRNO_MAP = {
-        errno.ECONNREFUSED:     0x05,
-        errno.EHOSTUNREACH:     0x04,
-        errno.ENETUNREACH:      0x03,
-    }
-
-    def __init__(self, stream, address, upstream_cls=None):
+class LocalConnectionHttps(object):
+    def __init__(self, stream, address, upstream_cls):
         self.stream = stream
         self.addr = address
-        if upstream_cls is None:
-            raise TypeError('a upstream is necessary')
         self.upstream_cls = upstream_cls
         self.stream.set_close_callback(self.on_connection_close)
         self.dest = None
@@ -96,7 +60,6 @@ class LocalConnection(object):
 
     def on_connected(self):
         logger.debug('start connect...')
-        self.cmd = 0x01
         self.atyp = 0x03
         self.domain_name = self.addr[0]
         self.raw_dest_addr = struct.pack("!B", len(self.addr[0])) + self.addr[0]
@@ -289,7 +252,7 @@ class ProxyHandler(tornado.web.RequestHandler):
         # print self.request.body
         logger.debug('Start CONNECT to %s', self.request.uri)
         host, port = self.request.uri.split(':')
-        connection = LocalConnection(self.request.connection.stream, (host, int(port)), fukei.upstream.local.LocalUpstream)
+        connection = LocalConnectionHttps(self.request.connection.stream, (host, int(port)), fukei.upstream.local.LocalUpstream)
 
 
 
