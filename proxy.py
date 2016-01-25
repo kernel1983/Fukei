@@ -61,7 +61,7 @@ class LocalConnectionHttps(object):
     def on_connected(self):
         logger.debug('start connect...')
         self.atyp = 0x03
-        self.domain_name = self.addr[0]
+        # self.domain_name = self.addr[0]
         self.raw_dest_addr = struct.pack("!B", len(self.addr[0])) + self.addr[0]
         self.raw_dest_port = struct.pack("!H", self.addr[1])
         self.dest = self.addr
@@ -71,24 +71,24 @@ class LocalConnectionHttps(object):
         logger.debug("disconnected!")
         self.clean_upstream()
 
-    def wait_for_domain_name(self):
-        self.raw_dest_addr = ""
-        self.stream.read_bytes(1, self.on_domain_name_num_octets)
+    # def wait_for_domain_name(self):
+    #     self.raw_dest_addr = ""
+    #     self.stream.read_bytes(1, self.on_domain_name_num_octets)
 
-    def on_domain_name_num_octets(self, data):
-        self.raw_dest_addr += data
-        num, = struct.unpack("!B", data)
-        self.stream.read_bytes(num, self.on_domain_name_octets)
+    # def on_domain_name_num_octets(self, data):
+    #     self.raw_dest_addr += data
+    #     num, = struct.unpack("!B", data)
+    #     self.stream.read_bytes(num, self.on_domain_name_octets)
 
-    def on_domain_name_octets(self, data):
-        self.raw_dest_addr += data
-        self.domain_name = data
-        self.on_domain_name_complete()
+    # def on_domain_name_octets(self, data):
+    #     self.raw_dest_addr += data
+    #     self.domain_name = data
+    #     self.on_domain_name_complete()
 
-    def on_domain_name_complete(self):
-        logger.debug("parsed domain name: %s" % self.domain_name)
-        self.dest_addr = self.domain_name
-        self.wait_destination_port()
+    # def on_domain_name_complete(self):
+    #     logger.debug("parsed domain name: %s" % self.domain_name)
+    #     self.dest_addr = self.domain_name
+    #     self.wait_destination_port()
 
     def do_connect(self):
         config = Config.current()
@@ -99,18 +99,6 @@ class LocalConnectionHttps(object):
         self.upstream = self.upstream_cls(dest, socket.AF_INET,
                     self.on_upstream_connect, self.on_upstream_error,
                     self.on_upstream_data, self.on_upstream_close)
-
-    # def client_close(self, data=None):
-    #     print data
-    #     if not self.upstream:
-    #         return
-    #     if data:
-    #         self.upstream.write(data)
-    #     self.upstream.close()
-    #
-    # def read_from_client(self, data):
-    #     # print "read_from_client", data
-    #     self.upstream.write(data)
 
     def on_upstream_connect(self, _dummy):
         config = Config.current()
@@ -167,80 +155,135 @@ class LocalConnectionHttps(object):
             logger.debug("sent %d bytes of data to upstream." %
                          len(data))
 
-def get_proxy(url):
-    url_parsed = urlparse(url, scheme='http')
-    proxy_key = '%s_proxy' % url_parsed.scheme
-    return os.environ.get(proxy_key)
-
-def parse_proxy(proxy):
-    proxy_parsed = urlparse(proxy, scheme='http')
-    return proxy_parsed.hostname, proxy_parsed.port
-
-def fetch_request(url, callback, **kwargs):
-    proxy = get_proxy(url)
-    if proxy:
-        logger.debug('Forward request via upstream proxy %s', proxy)
-        tornado.httpclient.AsyncHTTPClient.configure(
-            'tornado.curl_httpclient.CurlAsyncHTTPClient')
-        host, port = parse_proxy(proxy)
-        kwargs['proxy_host'] = host
-        kwargs['proxy_port'] = port
-
-    req = tornado.httpclient.HTTPRequest(url, **kwargs)
-    client = tornado.httpclient.AsyncHTTPClient()
-    client.fetch(req, callback, raise_error=False)
-
 class ProxyHandler(tornado.web.RequestHandler):
     SUPPORTED_METHODS = ['GET', 'POST', 'CONNECT']
 
     def compute_etag(self):
         return None # disable tornado Etag
 
+    # def client_close(self, data=None):
+    #     print "client_close", data
+    #     # if not self.upstream:
+    #     #     return
+    #     # if data:
+    #     #     self.upstream.write(data)
+    #     # self.upstream.close()
+    #
+    # def read_from_client(self, data):
+    #     print "read_from_client", data
+    #     # self.upstream.write(data)
+
+
+    def on_connect(self):
+        # self.stream.read_until_close(on_finish, self.on_streaming_data)
+
+        data = self.raw_dest_addr + self.raw_dest_port
+        self.upstream.write(struct.pack("!B", 0x03) + data)
+
+        data = "%s %s %s\r\n" % (self.request.method, self.request.uri.replace(self.request.protocol+"://"+self.request.host, ""), self.request.version)
+        data += "\r\n".join(["%s: %s" % (i, j) for i, j in self.request.headers.items()])+"\r\n\r\n"
+        self.upstream.write(data)
+        # print self.request.body
+        self.upstream.write(self.request.body)
+        self.upstream.read_until('\r\n\r\n', self.on_headers)
+        # self.upstream.read_until_close(self.on_upstream_close, self.on_upstream_data)
+
+    # def on_upstream_error(self, _dummy, no):
+    #     logger.debug("upstream error: %s" % no)
+
+    def on_headers(self, data):
+        # self.request.connection.stream.write(data)
+        lines = data.split("\r\n")
+        # print lines[0]
+        # _, code, reason = lines[0].split(" ")
+        # self.set_status(code, reason)
+        self.request.connection.stream.write("%s\r\n" % lines[0])
+
+        headers_data = "\r\n".join(lines[1:])
+        # print headers_data
+        self._headers = tornado.httputil.HTTPHeaders() # clear tornado default header
+        headers = tornado.httputil.HTTPHeaders.parse(headers_data)
+        for key, value in headers.get_all():
+            # if key not in ('Content-Length', 'Transfer-Encoding', 'Content-Encoding', 'Connection'):
+                # self.add_header(key, value) # some header appear multiple times, eg 'Set-Cookie'
+            # if key not in ('Connection'):
+            self.request.connection.stream.write("%s: %s\r\n" % (key, value))
+        self.request.connection.stream.write("\r\n")
+
+        # content_length = int(headers["Content-Length"])
+        # self.upstream.read_bytes(content_length, self.on_upstream_data)
+        self.upstream.read_until_close(self.on_upstream_close, self.on_upstream_data)
+        self.request.finish()
+
+    def on_upstream_data(self, data):
+        # print "data", data
+        try:
+            # self.write(data)
+            self.request.connection.stream.write(data)
+            logger.debug("recevied %d bytes of data from upstream." %
+                         len(data))
+        except IOError as e:
+            logger.debug("cannot write: %s" % str(e))
+            if self.upstream:
+                self.upstream.close()
+
+    def on_upstream_close(self, _dummy=None):
+        self.upstream.close()
+        logger.debug("upstream closed.")
+        self.clean_upstream()
+        self.finish()
+
+    def clean_upstream(self):
+        if getattr(self, "upstream", None):
+            self.upstream.close()
+            self.upstream = None
+
+    def on_upstream_error(self, _dummy, no):
+        logger.debug("upstream error: %s" % no)
+        # if not self.sent_reply:
+        #     self.write_reply(self.ERRNO_MAP.get(no, 0x01))
+        self.stream.close()
+
+    # def on_connection_close(self):
+    #     logger.debug("disconnected!")
+    #     self.clean_upstream()
+
+    def on_close(self):
+        if self.upstream.error:
+            self.on_upstream_error(self, self.upstream.error)
+        else:
+            self.on_upstream_close(self)
+
     @tornado.web.asynchronous
     def get(self):
-        print
-        print self.request.method, self.request.uri.replace(self.request.protocol+"://"+self.request.host, ""), self.request.version
-        print "\n".join(["%s: %s" % (i, j) for i, j in self.request.headers.items()])
         # print self.request.connection._request_headers
         logger.debug('Handle %s request to %s', self.request.method,
                      self.request.uri)
 
-        def handle_response(response):
-            if (response.error and not
-                    isinstance(response.error, tornado.httpclient.HTTPError)):
-                self.set_status(500)
-                self.write('Internal server error:\n' + str(response.error))
-            else:
-                self.set_status(response.code, response.reason)
-                self._headers = tornado.httputil.HTTPHeaders() # clear tornado default header
+        addr = self.request.host.split(':')
+        if len(addr) == 2:
+            host, port = addr
+        else:
+            host, port = self.request.host, "80"
 
-                for header, v in response.headers.get_all():
-                    if header not in ('Content-Length', 'Transfer-Encoding', 'Content-Encoding', 'Connection'):
-                        self.add_header(header, v) # some header appear multiple times, eg 'Set-Cookie'
+        self.addr = host, int(port)
+        self.raw_dest_addr = struct.pack("!B", len(self.addr[0])) + self.addr[0]
+        self.raw_dest_port = struct.pack("!H", self.addr[1])
+        dest = (config.server, config.server_port)
 
-                if response.body:
-                    self.set_header('Content-Length', len(response.body))
-                    self.write(response.body)
-            self.finish()
+        # config = Config.current()
+        # logger.debug("server : %s, %s" % (config.server, config.server_port))
+        # logger.debug("server dest: %s, %s" % self.addr)
+        # self.upstream = fukei.upstream.local.LocalUpstream(dest, socket.AF_INET,
+        #             self.on_upstream_connect, self.on_upstream_error,
+        #             self.on_upstream_data, self.on_upstream_close)
 
-        body = self.request.body
-        if not body:
-            body = None
-        try:
-            if 'Proxy-Connection' in self.request.headers:
-                del self.request.headers['Proxy-Connection']
-            fetch_request(
-                self.request.uri, handle_response,
-                method=self.request.method, body=body,
-                headers=self.request.headers, follow_redirects=False,
-                allow_nonstandard_methods=True)
-        except tornado.httpclient.HTTPError as e:
-            if hasattr(e, 'response') and e.response:
-                handle_response(e.response)
-            else:
-                self.set_status(500)
-                self.write('Internal server error:\n' + str(e))
-                self.finish()
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.upstream = fukei.upstream.local.CryptoIOStream(self.socket)
+        self.upstream.set_close_callback(self.on_close)
+        self.upstream.connect(dest, self.on_connect)
+
+
 
     @tornado.web.asynchronous
     def post(self):
