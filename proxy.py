@@ -228,10 +228,9 @@ class ProxyHandler(tornado.web.RequestHandler):
                 self.upstream.close()
 
     def on_upstream_close(self, _dummy=None):
-        self.upstream.close()
+        self.request.finish()
         logger.debug("upstream closed.")
         self.clean_upstream()
-        self.finish()
 
     def clean_upstream(self):
         if getattr(self, "upstream", None):
@@ -240,16 +239,11 @@ class ProxyHandler(tornado.web.RequestHandler):
 
     def on_upstream_error(self, _dummy, no):
         logger.debug("upstream error: %s" % no)
-        # if not self.sent_reply:
-        #     self.write_reply(self.ERRNO_MAP.get(no, 0x01))
-        self.stream.close()
-
-    # def on_connection_close(self):
-    #     logger.debug("disconnected!")
-    #     self.clean_upstream()
+        # self.upstream.close()
+        self.request.finish()
 
     def on_close(self):
-        if self.upstream.error:
+        if self.upstream and self.upstream.error:
             self.on_upstream_error(self, self.upstream.error)
         else:
             self.on_upstream_close(self)
