@@ -61,7 +61,6 @@ class LocalConnectionHttps(object):
     def on_connected(self):
         logger.debug('start connect...')
         self.atyp = 0x03
-        # self.domain_name = self.addr[0]
         self.raw_dest_addr = struct.pack("!B", len(self.addr[0])) + self.addr[0]
         self.raw_dest_port = struct.pack("!H", self.addr[1])
         self.dest = self.addr
@@ -70,25 +69,6 @@ class LocalConnectionHttps(object):
     def on_connection_close(self):
         logger.debug("disconnected!")
         self.clean_upstream()
-
-    # def wait_for_domain_name(self):
-    #     self.raw_dest_addr = ""
-    #     self.stream.read_bytes(1, self.on_domain_name_num_octets)
-
-    # def on_domain_name_num_octets(self, data):
-    #     self.raw_dest_addr += data
-    #     num, = struct.unpack("!B", data)
-    #     self.stream.read_bytes(num, self.on_domain_name_octets)
-
-    # def on_domain_name_octets(self, data):
-    #     self.raw_dest_addr += data
-    #     self.domain_name = data
-    #     self.on_domain_name_complete()
-
-    # def on_domain_name_complete(self):
-    #     logger.debug("parsed domain name: %s" % self.domain_name)
-    #     self.dest_addr = self.domain_name
-    #     self.wait_destination_port()
 
     def do_connect(self):
         config = Config.current()
@@ -161,22 +141,7 @@ class ProxyHandler(tornado.web.RequestHandler):
     def compute_etag(self):
         return None # disable tornado Etag
 
-    # def client_close(self, data=None):
-    #     print "client_close", data
-    #     # if not self.upstream:
-    #     #     return
-    #     # if data:
-    #     #     self.upstream.write(data)
-    #     # self.upstream.close()
-    #
-    # def read_from_client(self, data):
-    #     print "read_from_client", data
-    #     # self.upstream.write(data)
-
-
     def on_connect(self):
-        # self.stream.read_until_close(on_finish, self.on_streaming_data)
-
         data = self.raw_dest_addr + self.raw_dest_port
         self.upstream.write(struct.pack("!B", 0x03) + data)
 
@@ -186,17 +151,10 @@ class ProxyHandler(tornado.web.RequestHandler):
         # print self.request.body
         self.upstream.write(self.request.body)
         self.upstream.read_until('\r\n\r\n', self.on_headers)
-        # self.upstream.read_until_close(self.on_upstream_close, self.on_upstream_data)
-
-    # def on_upstream_error(self, _dummy, no):
-    #     logger.debug("upstream error: %s" % no)
 
     def on_headers(self, data):
-        # self.request.connection.stream.write(data)
         lines = data.split("\r\n")
         # print lines[0]
-        # _, code, reason = lines[0].split(" ")
-        # self.set_status(code, reason)
         self.request.connection.stream.write("%s\r\n" % lines[0])
 
         headers_data = "\r\n".join(lines[1:])
@@ -204,21 +162,14 @@ class ProxyHandler(tornado.web.RequestHandler):
         self._headers = tornado.httputil.HTTPHeaders() # clear tornado default header
         headers = tornado.httputil.HTTPHeaders.parse(headers_data)
         for key, value in headers.get_all():
-            # if key not in ('Content-Length', 'Transfer-Encoding', 'Content-Encoding', 'Connection'):
-                # self.add_header(key, value) # some header appear multiple times, eg 'Set-Cookie'
-            # if key not in ('Connection'):
             self.request.connection.stream.write("%s: %s\r\n" % (key, value))
         self.request.connection.stream.write("\r\n")
 
-        # content_length = int(headers["Content-Length"])
-        # self.upstream.read_bytes(content_length, self.on_upstream_data)
         self.upstream.read_until_close(self.on_upstream_close, self.on_upstream_data)
         self.request.finish()
 
     def on_upstream_data(self, data):
-        # print "data", data
         try:
-            # self.write(data)
             self.request.connection.stream.write(data)
             logger.debug("recevied %d bytes of data from upstream." %
                          len(data))
@@ -265,18 +216,10 @@ class ProxyHandler(tornado.web.RequestHandler):
         self.raw_dest_port = struct.pack("!H", self.addr[1])
         dest = (config.server, config.server_port)
 
-        # config = Config.current()
-        # logger.debug("server : %s, %s" % (config.server, config.server_port))
-        # logger.debug("server dest: %s, %s" % self.addr)
-        # self.upstream = fukei.upstream.local.LocalUpstream(dest, socket.AF_INET,
-        #             self.on_upstream_connect, self.on_upstream_error,
-        #             self.on_upstream_data, self.on_upstream_close)
-
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.upstream = fukei.upstream.local.CryptoIOStream(self.socket)
         self.upstream.set_close_callback(self.on_close)
         self.upstream.connect(dest, self.on_connect)
-
 
 
     @tornado.web.asynchronous
@@ -285,12 +228,9 @@ class ProxyHandler(tornado.web.RequestHandler):
 
     @tornado.web.asynchronous
     def connect(self):
-        # print self.request.method, self.request.headers.items()
-        # print self.request.body
         logger.debug('Start CONNECT to %s', self.request.uri)
         host, port = self.request.uri.split(':')
         connection = LocalConnectionHttps(self.request.connection.stream, (host, int(port)), fukei.upstream.local.LocalUpstream)
-
 
 
 if __name__ == '__main__':
