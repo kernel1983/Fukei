@@ -1,7 +1,7 @@
 Fukei
 =============
 
-A Python Tornado port of socks proxy
+A Python Tornado port of SS with http proxy
 
 
 Usage
